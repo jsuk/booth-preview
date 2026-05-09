@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WHX Osaka — Booth B-1508 3D Preview</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1a1a1a; color: #eee;
+    font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
+  #app { position: fixed; inset: 0; }
+  #hud { position: fixed; top: 12px; left: 12px; z-index: 10;
+    background: rgba(0,0,0,.6); padding: 10px 14px; border-radius: 8px;
+    font-size: 13px; line-height: 1.5; max-width: 320px; }
+  #hud b { color: #6fb1ff; }
+  #hud kbd { background: #333; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+  #views { margin-top: 8px; }
+  #views button { background: #2a2a2a; color: #eee; border: 1px solid #444;
+    padding: 4px 10px; margin-right: 4px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  #views button:hover { background: #3a3a3a; }
+  #views button.on { background: #f0a040; color: #1a1a1a; border-color: #f0a040; }
+  .dim-label {
+    background: #fff8d8;
+    color: #1a1a1a;
+    border: 1px solid #b07a20;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font: 11px/1.2 "Helvetica Neue", system-ui, sans-serif;
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+  .dim-label.compact { font-size: 10px; padding: 0 4px; background: #fff; }
+  #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: #1a1a1a; z-index: 100; font-size: 14px; }
+</style>
+</head>
+<body>
+<div id="loading">Loading booth…</div>
+<div id="hud">
+  <b>WHX Osaka — B-1508</b><br>
+  3,000 × 3,000 × H3,300 mm (wall 2,700 + parapet 600)<br>
+  Sun International Shell · corner booth · 2 walls + 2 parapets<br>
+  Nameplate W2950 × H520 · gray carpet · ∅750 round table<br>
+  <small>Drag to orbit · scroll to zoom · right-drag to pan</small>
+  <div id="views">
+    <button data-v="corner">Corner</button>
+    <button data-v="aisle">Aisle</button>
+    <button data-v="left">Left</button>
+    <button data-v="inside">Inside</button>
+    <button data-v="top">Top</button>
+    <button id="dimToggle">Dimensions</button>
+  </div>
+</div>
+<div id="app"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+// ---- Booth dimensions (meters) ----
+// Corner booth (Sun International shell scheme, 9㎡):
+//   L-walls at back (z=0) and right (x=W); open front + open left.
+//   Parapet beams cross the two open sides at the top, each carrying a nameplate.
+const W = 3.0;       // booth width  (back wall length, x-axis)
+const D = 3.0;       // booth depth  (right wall length, z-axis)
+const H = 2.7;       // wall panel height
+const PARAPET_H = 0.60;       // 600 mm parapet beam — sits ABOVE the wall (top at H + PARAPET_H)
+const TOTAL_H = H + PARAPET_H; // 3,300 mm overall structure height
+const NAMEPLATE_W = 2.95;     // 2950 mm per spec (page 3/4)
+const NAMEPLATE_H = 0.52;     // 520 mm per spec — centered inside the H600 parapet
+const COLUMN_T = 0.06;        // front-left corner column thickness
+
+// ---- Renderer ----
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.getElementById('app').appendChild(renderer.domElement);
+
+// CSS2D renderer for dimension labels (HTML overlay, perfectly crisp text)
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+Object.assign(labelRenderer.domElement.style, {
+  position: 'fixed', inset: '0', pointerEvents: 'none',
+});
+document.getElementById('app').appendChild(labelRenderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x202428);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.05, 100);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(W/2, 1.2, D/2);
+controls.enableDamping = true;
+controls.minDistance = 0.5;
+controls.maxDistance = 12;
+controls.maxPolarAngle = Math.PI * 0.49;
+
+const VIEWS = {
+  // open corner is at (x=0, z=D) — front-left of the booth
+  corner: { pos: [-2.8, 2.0, D + 2.8],      target: [W/2, 1.4, D/2] },
+  aisle:  { pos: [W/2, 1.8, D + 4.2],       target: [W/2, 1.4, D/2] },
+  inside: { pos: [W - 0.5, 1.65, D - 0.5],  target: [0.5, 1.0, 0.2] },
+  top:    { pos: [W/2, 7.5, D/2 + 0.001],   target: [W/2, 0, D/2] },
+  left:   { pos: [-3.4, 1.8, D/2],          target: [W/2, 1.4, D/2] },
+};
+function setView(name) {
+  const v = VIEWS[name];
+  camera.position.set(...v.pos);
+  controls.target.set(...v.target);
+  controls.update();
+}
+setView('corner');
+document.querySelectorAll('#views button').forEach(b =>
+  b.onclick = () => setView(b.dataset.v));
+
+// ---- Lighting ----
+scene.add(new THREE.HemisphereLight(0xffffff, 0x404040, 0.45));
+const sun = new THREE.DirectionalLight(0xffffff, 0.55);
+sun.position.set(-3, 6, 6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -6; sun.shadow.camera.right = 6;
+sun.shadow.camera.top = 6; sun.shadow.camera.bottom = -6;
+scene.add(sun);
+
+// Stick lights are mounted on the parapets (built per-parapet below).
+
+// 3× arm spotlights mounted high on the back wall, aimed downward at booth center
+function addSpot(x) {
+  const s = new THREE.SpotLight(0xfff8e0, 12, 6, Math.PI/6, 0.4, 1.2);
+  s.position.set(x, H - 0.05, 0.08);
+  s.target.position.set(x, 0.6, D * 0.55);
+  s.castShadow = true;
+  s.shadow.mapSize.set(1024, 1024);
+  scene.add(s); scene.add(s.target);
+  // little spot housing
+  const housing = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.04, 0.05, 0.10, 16),
+    new THREE.MeshStandardMaterial({ color: 0x222, metalness: 0.7, roughness: 0.3 })
+  );
+  housing.rotation.x = Math.PI/4;
+  housing.position.set(x, H - 0.05, 0.15);
+  scene.add(housing);
+}
+addSpot(W * 0.20);
+addSpot(W * 0.50);
+addSpot(W * 0.80);
+
+// ---- Materials ----
+const texLoader = new THREE.TextureLoader();
+function loadTex(url) {
+  return new Promise((resolve) => {
+    texLoader.load(url, (t) => {
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = 8;
+      resolve(t);
+    }, undefined, () => resolve(null));
+  });
+}
+
+const matWhite = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.85 });
+const matWhiteFurniture = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55 });
+const matCarpet = new THREE.MeshStandardMaterial({ color: 0x868a8f, roughness: 1.0 });   // standard gray per spec
+const matChrome = new THREE.MeshStandardMaterial({ color: 0xc8c8cc, metalness: 0.85, roughness: 0.25 });
+const matAlu = new THREE.MeshStandardMaterial({ color: 0xd0d2d4, metalness: 0.6, roughness: 0.45 });
+const matWood = new THREE.MeshStandardMaterial({ color: 0xd9c4a3, roughness: 0.6 });
+const matBlack = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.7 });
+const matNameplateBoard = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
+
+// ---- Floor (carpet) — covers booth footprint
+const floor = new THREE.Mesh(new THREE.BoxGeometry(W, 0.02, D), matCarpet);
+floor.position.set(W/2, 0.01, D/2);
+floor.receiveShadow = true;
+scene.add(floor);
+
+// surrounding aisle (light grey concrete)
+const aisle = new THREE.Mesh(
+  new THREE.PlaneGeometry(20, 20),
+  new THREE.MeshStandardMaterial({ color: 0x4d5258, roughness: 1.0 })
+);
+aisle.rotation.x = -Math.PI/2;
+aisle.position.set(W/2, 0, D/2);
+aisle.receiveShadow = true;
+scene.add(aisle);
+
+// ---- Walls ----
+// Coordinate convention:
+//   x: 0 (left) → W (right)
+//   z: 0 (back, away from aisle) → D (front, aisle side)
+// Back wall lives at z ≈ 0; right wall at x ≈ W.
+
+const WALL_T = 0.04; // panel thickness
+
+// Wall: print covers the inside face, full height (nameplates live on parapets, not the wall top).
+async function buildBackWall() {
+  const group = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.BoxGeometry(W, H, WALL_T), matWhite);
+  base.position.set(W/2, H/2, -WALL_T/2);
+  base.castShadow = true; base.receiveShadow = true;
+  group.add(base);
+
+  const tex = await loadTex('wall%20design%20front.png');
+  if (tex) {
+    const print = new THREE.Mesh(
+      new THREE.PlaneGeometry(W, H),
+      new THREE.MeshBasicMaterial({ map: tex })
+    );
+    print.position.set(W/2, H/2, 0.005);
+    group.add(print);
+  }
+  return group;
+}
+
+async function buildRightWall() {
+  const group = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.BoxGeometry(WALL_T, H, D), matWhite);
+  base.position.set(W + WALL_T/2, H/2, D/2);
+  base.castShadow = true; base.receiveShadow = true;
+  group.add(base);
+
+  const tex = await loadTex('wall%20design%20right.png');
+  if (tex) {
+    const print = new THREE.Mesh(
+      new THREE.PlaneGeometry(D, H),
+      new THREE.MeshBasicMaterial({ map: tex })
+    );
+    print.rotation.y = -Math.PI / 2;
+    print.position.set(W - 0.005, H/2, D/2);
+    group.add(print);
+  }
+  return group;
+}
+
+// Parapet beam with centered nameplate (whiteboard, black gothic lettering, both faces).
+// Local frame: y=0 is parapet center; +z is the OUTBOUND (aisle) face.
+function buildParapet({ length, position, rotationY = 0, label }) {
+  const g = new THREE.Group();
+  const beamDepth = 0.10;
+
+  // Black aluminum top rail
+  const railTop = new THREE.Mesh(
+    new THREE.BoxGeometry(length, 0.04, beamDepth + 0.02),
+    new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.5, roughness: 0.5 }));
+  railTop.position.y = PARAPET_H/2 - 0.02;
+  g.add(railTop);
+  // Black aluminum bottom rail
+  const railBot = new THREE.Mesh(
+    new THREE.BoxGeometry(length, 0.03, beamDepth + 0.02),
+    new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.5, roughness: 0.5 }));
+  railBot.position.y = -PARAPET_H/2 + 0.015;
+  g.add(railBot);
+
+  // Beam back-fill (so the parapet has visual mass between the two rails)
+  const fill = new THREE.Mesh(
+    new THREE.BoxGeometry(length, PARAPET_H - 0.07, beamDepth),
+    matNameplateBoard);
+  fill.position.y = 0;
+  g.add(fill);
+
+  // Whiteboard nameplate — centered in the 600 mm beam, ~40 mm margins
+  const npGeom = new THREE.PlaneGeometry(NAMEPLATE_W, NAMEPLATE_H);
+  const labelCanvas = makeNameplateCanvas(label);
+  const labelTex = new THREE.CanvasTexture(labelCanvas);
+  labelTex.colorSpace = THREE.SRGBColorSpace;
+  labelTex.anisotropy = 8;
+  const matLabel = new THREE.MeshBasicMaterial({ map: labelTex });
+
+  const npOut = new THREE.Mesh(npGeom, matLabel);
+  npOut.position.set(0, 0, beamDepth/2 + 0.001);
+  g.add(npOut);
+
+  const npIn = new THREE.Mesh(npGeom, matLabel);
+  npIn.rotation.y = Math.PI;
+  npIn.position.set(0, 0, -(beamDepth/2 + 0.001));
+  g.add(npIn);
+
+  // 30 W stick light mounted under the parapet, illuminating the inside face of the nameplate
+  const stick = new THREE.RectAreaLight(0xfff2cc, 5, length * 0.9, 0.04);
+  stick.position.set(0, -PARAPET_H/2 + 0.01, beamDepth/2 + 0.06);
+  stick.lookAt(0, -1.0, beamDepth/2 + 0.06);
+  g.add(stick);
+  const stickHousing = new THREE.Mesh(
+    new THREE.BoxGeometry(length * 0.9, 0.04, 0.06),
+    new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.35 }));
+  stickHousing.position.set(0, -PARAPET_H/2 + 0.02, beamDepth/2 + 0.04);
+  g.add(stickHousing);
+
+  // The parapet sits ABOVE the wall: bottom at H, top at H + PARAPET_H (= 3,300 mm overall)
+  g.position.set(position[0], H + PARAPET_H/2, position[2]);
+  g.rotation.y = rotationY;
+  return g;
+}
+
+function makeNameplateCanvas(text) {
+  // Aspect 2950:520 ≈ 5.67:1, inkjet on white foamboard with black gothic lettering (per spec).
+  const w = 2048, h = Math.round(w * (NAMEPLATE_H / NAMEPLATE_W));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+
+  // White board
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+
+  // Logo block (left): orange "P" mark on dark blue, mimicking the People & Technology logo
+  const padY = h * 0.16;
+  const logoH = h - padY * 2;
+  const logoW = logoH;
+  const logoX = padY * 0.6;
+  const logoY = padY;
+  ctx.fillStyle = '#1c2746';
+  roundRect(ctx, logoX, logoY, logoW, logoH, logoH * 0.18); ctx.fill();
+  ctx.fillStyle = '#f08a3e';
+  ctx.font = `bold ${Math.floor(logoH * 0.78)}px "Helvetica Neue", "Arial Black", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('P', logoX + logoW / 2, logoY + logoH / 2 + logoH * 0.02);
+
+  // Company name (right of logo) — auto-shrink to fit the available width
+  ctx.fillStyle = '#000000';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const textX = logoX + logoW + padY * 0.7;
+  const textRight = w - padY * 0.6;
+  const textW = textRight - textX;
+  const maxFont = Math.floor(h * 0.42);
+  const minFont = Math.floor(h * 0.18);
+  const fontStack = '"Helvetica Neue", "Arial", "Noto Sans CJK KR", Gothic, sans-serif';
+  let size = maxFont;
+  for (; size >= minFont; size--) {
+    ctx.font = `700 ${size}px ${fontStack}`;
+    if (ctx.measureText(text).width <= textW) break;
+  }
+  ctx.fillText(text, textX, h * 0.52);
+
+  // Thin top + bottom hairline (suggests the foamboard edge)
+  ctx.strokeStyle = '#cccccc'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, 1); ctx.lineTo(w, 1); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, h - 1); ctx.lineTo(w, h - 1); ctx.stroke();
+  return c;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y,     x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x,     y + h, r);
+  ctx.arcTo(x,     y + h, x,     y,     r);
+  ctx.arcTo(x,     y,     x + w, y,     r);
+  ctx.closePath();
+}
+
+// Front-left corner column where the two parapets meet — full height including the parapet (3,300 mm)
+function buildCornerColumn() {
+  const col = new THREE.Mesh(
+    new THREE.BoxGeometry(COLUMN_T, TOTAL_H, COLUMN_T),
+    matAlu);
+  col.position.set(COLUMN_T/2, TOTAL_H/2, D - COLUMN_T/2);
+  col.castShadow = true;
+  return col;
+}
+
+// ---- Furniture ----
+function roundTable() {
+  // ∅750 mm per spec
+  const g = new THREE.Group();
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.375, 0.375, 0.025, 48), matWood);
+  top.position.y = 0.72; top.castShadow = true; top.receiveShadow = true;
+  g.add(top);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.70, 24), matChrome);
+  stem.position.y = 0.36; stem.castShadow = true;
+  g.add(stem);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.03, 32), matChrome);
+  base.position.y = 0.015; base.castShadow = true;
+  g.add(base);
+  return g;
+}
+
+function stackChair() {
+  const g = new THREE.Group();
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.04, 0.42), matWhiteFurniture);
+  seat.position.y = 0.45; seat.castShadow = true; seat.receiveShadow = true;
+  g.add(seat);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.45, 0.04), matWhiteFurniture);
+  back.position.set(0, 0.69, -0.19); back.castShadow = true;
+  g.add(back);
+  // 4 legs
+  const legGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.45, 12);
+  const off = 0.18;
+  for (const [dx, dz] of [[-off,-off],[off,-off],[-off,off],[off,off]]) {
+    const leg = new THREE.Mesh(legGeo, matChrome);
+    leg.position.set(dx, 0.225, dz); leg.castShadow = true;
+    g.add(leg);
+  }
+  return g;
+}
+
+function counter() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.90, 0.75, 0.45), matWhiteFurniture);
+  body.position.y = 0.375; body.castShadow = true; body.receiveShadow = true;
+  g.add(body);
+  // top edge accent
+  const top = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.02, 0.47), matBlack);
+  top.position.y = 0.76;
+  g.add(top);
+  // logo strip on front face
+  const logoCanvas = makeTextCanvas('People & Technology', 512, 64, '#1c2746', '#ffffff');
+  const logoTex = new THREE.CanvasTexture(logoCanvas);
+  logoTex.colorSpace = THREE.SRGBColorSpace;
+  const logo = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.7, 0.09),
+    new THREE.MeshBasicMaterial({ map: logoTex, transparent: true })
+  );
+  logo.position.set(0, 0.5, 0.226);
+  g.add(logo);
+  return g;
+}
+
+function barStool() {
+  const g = new THREE.Group();
+  const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.04, 32), matBlack);
+  seat.position.y = 0.66; seat.castShadow = true;
+  g.add(seat);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.66, 16), matChrome);
+  stem.position.y = 0.33; stem.castShadow = true;
+  g.add(stem);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.025, 32), matChrome);
+  base.position.y = 0.012;
+  g.add(base);
+  // foot ring
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.012, 8, 32), matChrome);
+  ring.rotation.x = Math.PI/2; ring.position.y = 0.20;
+  g.add(ring);
+  return g;
+}
+
+function wasteBin() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.42, 24),
+    new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.4, roughness: 0.6 }));
+  body.position.y = 0.21; body.castShadow = true;
+  g.add(body);
+  const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.135, 0.135, 0.02, 24), matBlack);
+  lid.position.y = 0.43;
+  g.add(lid);
+  return g;
+}
+
+function powerOutlet() {
+  const g = new THREE.Group();
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.012), matWhiteFurniture);
+  plate.position.set(0, 0, 0); g.add(plate);
+  for (const dy of [-0.018, 0.018]) {
+    const slot = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.02, 0.005), matBlack);
+    slot.position.set(0, dy, 0.008); g.add(slot);
+  }
+  return g;
+}
+
+// ---- Helpers ----
+function makeTextCanvas(text, w, h, color, bg) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  if (bg) { ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h); }
+  ctx.fillStyle = color;
+  ctx.font = `bold ${Math.floor(h * 0.55)}px system-ui, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, w/2, h/2);
+  return c;
+}
+
+// ---- Build & place ----
+(async () => {
+  const back = await buildBackWall();
+  const right = await buildRightWall();
+  scene.add(back, right);
+
+  // Parapets across the two open sides of the corner booth (Sun International style).
+  // Each is a 600 mm beam at the very top, carrying a W2950 × H520 nameplate.
+  // Front parapet — spans z = D, between corner column (x≈0) and right wall (x = W).
+  // Outbound face must point to +z (front aisle), so rotationY = 0.
+  const frontParapet = buildParapet({
+    length: W - COLUMN_T,
+    position: [(W + COLUMN_T) / 2, 0, D - 0.06],
+    rotationY: 0,
+    label: 'B-1508  ·  Indoor Plus SmartCare',
+  });
+  scene.add(frontParapet);
+
+  // Left parapet — spans x = 0, between back wall (z≈0) and corner column (z ≈ D).
+  // Outbound face must point to -x (left aisle), so rotation maps local +z → world -x ⇒ -π/2.
+  const leftParapet = buildParapet({
+    length: D - COLUMN_T,
+    position: [0.06, 0, (D - COLUMN_T) / 2],
+    rotationY: -Math.PI / 2,
+    label: 'People & Technology  ·  B-1508',
+  });
+  scene.add(leftParapet);
+
+  scene.add(buildCornerColumn());
+
+  // Furniture layout per Sun International page-4 floor plan:
+  //   round table & 3 chairs occupy the back-left meeting area;
+  //   reception counter is parallel to the front edge so visitors meet it from the aisle;
+  //   waste bin tucked into the back-right corner; outlet on the back wall.
+
+  // Round table (∅750) — back-left, away from the open front
+  const tableX = W * 0.30, tableZ = D * 0.32;
+  const table = roundTable();
+  table.position.set(tableX, 0, tableZ);
+  scene.add(table);
+
+  // 3 stackable chairs around the table — facing INWARD toward the table center.
+  // Chair model's forward direction is +z (back panel sits at -z), so we rotate so local +z
+  // points from the chair position back to (tableX, tableZ).
+  const R = 0.78;
+  const chairAngles = [Math.PI * 1.05, Math.PI * 1.45, Math.PI * 1.85];
+  for (const a of chairAngles) {
+    const cx = tableX + R*Math.cos(a);
+    const cz = tableZ + R*Math.sin(a);
+    const c = stackChair();
+    c.position.set(cx, 0, cz);
+    c.rotation.y = Math.atan2(tableX - cx, tableZ - cz);  // face the table
+    scene.add(c);
+  }
+
+  // Reception counter — front-right area, oriented along x (long edge facing the front aisle)
+  const rcX = W * 0.62, rcZ = D - 0.55;
+  const rc = counter();
+  rc.position.set(rcX, 0, rcZ);
+  rc.rotation.y = Math.PI;          // logo strip faces -z (toward front aisle)
+  scene.add(rc);
+
+  // Counter chair (= bar stool) on the staff side of the counter
+  const stool = barStool();
+  stool.position.set(rcX - 0.20, 0, rcZ + 0.55);
+  scene.add(stool);
+
+  // Waste bin — back-right corner
+  const bin = wasteBin();
+  bin.position.set(W - 0.22, 0, 0.22);
+  scene.add(bin);
+
+  // Power outlet on the back wall (low, near the counter side)
+  const po = powerOutlet();
+  po.position.set(W - 0.45, 0.30, 0.025);
+  scene.add(po);
+
+  document.getElementById('loading').style.display = 'none';
+})();
+
+// ---- Dimension overlay ----
+const dimGroup = new THREE.Group();
+dimGroup.visible = false;
+scene.add(dimGroup);
+
+const matDimLine = new THREE.LineBasicMaterial({ color: 0xf0a040 });
+const matDimLineLight = new THREE.LineBasicMaterial({ color: 0xf0a040, transparent: true, opacity: 0.55 });
+const matTickLine = new THREE.LineBasicMaterial({ color: 0xf0a040 });
+
+function dimLabel(text, position, compact = false) {
+  const div = document.createElement('div');
+  div.className = compact ? 'dim-label compact' : 'dim-label';
+  div.textContent = text;
+  const obj = new CSS2DObject(div);
+  obj.position.set(...position);
+  return obj;
+}
+
+function lineSeg(a, b, mat = matDimLine) {
+  const g = new THREE.BufferGeometry().setFromPoints(
+    [new THREE.Vector3(...a), new THREE.Vector3(...b)]);
+  return new THREE.Line(g, mat);
+}
+
+// Add a dimension run between p1 and p2 with text label.
+// `axis` ('x'|'y'|'z') is the offset direction for the witness lines (perpendicular to the dim line).
+function addDim(p1, p2, label, axis = 'y', offset = 0.18, compact = false) {
+  const o = { x: [offset, 0, 0], y: [0, offset, 0], z: [0, 0, offset] }[axis];
+  const a1 = [p1[0] + o[0], p1[1] + o[1], p1[2] + o[2]];
+  const a2 = [p2[0] + o[0], p2[1] + o[1], p2[2] + o[2]];
+  // witness lines from object → dim line
+  dimGroup.add(lineSeg(p1, a1, matDimLineLight));
+  dimGroup.add(lineSeg(p2, a2, matDimLineLight));
+  // dim line itself
+  dimGroup.add(lineSeg(a1, a2, matDimLine));
+  // tick marks
+  const tickSize = 0.04;
+  const t1 = axis === 'y'
+    ? [[a1[0]-tickSize, a1[1], a1[2]], [a1[0]+tickSize, a1[1], a1[2]]]
+    : axis === 'x'
+    ? [[a1[0], a1[1]-tickSize, a1[2]], [a1[0], a1[1]+tickSize, a1[2]]]
+    : [[a1[0]-tickSize, a1[1], a1[2]], [a1[0]+tickSize, a1[1], a1[2]]];
+  const t2 = axis === 'y'
+    ? [[a2[0]-tickSize, a2[1], a2[2]], [a2[0]+tickSize, a2[1], a2[2]]]
+    : axis === 'x'
+    ? [[a2[0], a2[1]-tickSize, a2[2]], [a2[0], a2[1]+tickSize, a2[2]]]
+    : [[a2[0]-tickSize, a2[1], a2[2]], [a2[0]+tickSize, a2[1], a2[2]]];
+  dimGroup.add(lineSeg(t1[0], t1[1]));
+  dimGroup.add(lineSeg(t2[0], t2[1]));
+  // label at midpoint of dim line
+  const mid = [(a1[0]+a2[0])/2, (a1[1]+a2[1])/2, (a1[2]+a2[2])/2];
+  dimGroup.add(dimLabel(label, mid, compact));
+}
+
+// Booth footprint dimensions (drawn on the floor, slightly outside the booth)
+addDim([0, 0.005, D], [W, 0.005, D], '3,000 mm (W)', 'z', 0.40);     // front edge
+addDim([W, 0.005, 0], [W, 0.005, D], '3,000 mm (D)', 'x', 0.40);     // right edge
+
+// Height stack on the back-left of the booth (closest to viewer in Corner view)
+//   Wall:    0 → 2,700 mm
+//   Parapet: 2,700 → 3,300 mm
+addDim([0, 0, 0],            [0, H, 0],         '2,700 mm (wall)',     'x', -0.30, true);
+addDim([0, H, 0],            [0, TOTAL_H, 0],   '600 mm (parapet)',    'x', -0.30, true);
+addDim([-0.30, 0, 0],        [-0.30, TOTAL_H, 0], '3,300 mm (total)',  'x', -0.30);
+
+// Nameplate W2950 × H520 — annotated on the FRONT parapet (centered inside the H600 beam)
+const npFrontY = H + PARAPET_H / 2;
+addDim(
+  [(W + COLUMN_T) / 2 - NAMEPLATE_W / 2, npFrontY + NAMEPLATE_H / 2, D + 0.06],
+  [(W + COLUMN_T) / 2 + NAMEPLATE_W / 2, npFrontY + NAMEPLATE_H / 2, D + 0.06],
+  '2,950 mm', 'y', 0.10, true);
+addDim(
+  [(W + COLUMN_T) / 2 + NAMEPLATE_W / 2, npFrontY - NAMEPLATE_H / 2, D + 0.06],
+  [(W + COLUMN_T) / 2 + NAMEPLATE_W / 2, npFrontY + NAMEPLATE_H / 2, D + 0.06],
+  '520 mm', 'x', 0.10, true);
+
+// Furniture callouts (small leader-style labels)
+function pin(label, position) {
+  dimGroup.add(dimLabel(label, position, true));
+}
+pin('Round Table  ∅750', [W * 0.30, 0.78, D * 0.32]);
+pin('Reception Counter  W900 × D450 × H750', [W * 0.62, 0.92, D - 0.55]);
+pin('Bar Stool  H660', [W * 0.62 - 0.20, 0.78, D - 0.55 + 0.55]);
+pin('Stackable Chair × 3', [W * 0.30 - 0.65, 0.55, D * 0.32 + 0.40]);
+pin('Waste Bin', [W - 0.22, 0.50, 0.22]);
+pin('Power Outlet (2 plugs)', [W - 0.45, 0.42, 0.025]);
+pin('Stick Light 30W', [(W + COLUMN_T) / 2, H + 0.05, D - 0.06]);
+pin('Arm Spotlight 10W × 3', [W * 0.50, H - 0.05, 0.20]);
+pin('Carpet (Gray)', [W * 0.62, 0.06, D * 0.10]);
+
+// HUD toggle
+const dimBtn = document.getElementById('dimToggle');
+dimBtn.onclick = () => {
+  dimGroup.visible = !dimGroup.visible;
+  dimBtn.classList.toggle('on', dimGroup.visible);
+};
+
+// ---- Resize ----
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  labelRenderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ---- Animate ----
+function tick() {
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+tick();
+</script>
+</body>
+</html>
