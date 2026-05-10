@@ -896,8 +896,9 @@ const draggables = [];                       // items that can be slid along the
   noteTag.position.set(0.50, 0.10, 0);
   mqDims.add(noteTag);
 
-  // Track the mannequin dim sub-group so the global Dimensions toggle controls it.
-  targetPins.push(mqDims);
+  // The mannequin's height gauge is gated by the Dimensions button AND it lives
+  // inside mqSystem so it auto-hides when the mannequin checkbox is off.
+  gatedDimGroups.push(mqDims);
 
   // Register draggables — items that slide along the floor. Snapshot each
   // home position + rotation so "Reset to defaults" can restore the layout.
@@ -1023,25 +1024,28 @@ pin('Stick Light 30W', [(W + COLUMN_T) / 2, H + 0.05, D - 0.06]);
 pin('Arm Spotlight 10W × 3', [W * 0.50, H - 0.05, 0.20]);
 pin('Carpet (Gray)', [W * 0.62, 0.06, D * 0.10]);
 
-// Pins attached to draggable objects — they inherit the target's visibility
-// AND respect the global Dimensions toggle (set on each pin individually).
-const targetPins = [];
+// Per-item pin labels — always visible when the parent object is visible, so
+// they appear/disappear together with the show/hide checkbox in the HUD.
 function attachPin(target, label, localPos) {
   const div = document.createElement('div');
   div.className = 'dim-label compact';
   div.textContent = label;
   const obj = new CSS2DObject(div);
   obj.position.set(...localPos);
-  obj.visible = false;          // start hidden — match dimGroup default
+  // visibility follows the parent only; the Dimensions button does not gate it.
   target.add(obj);
-  targetPins.push(obj);
 }
 
-// HUD toggle
+// Sub-groups that live inside draggables but should toggle with the
+// Dimensions button (e.g. the mannequin's height gauge — registered later).
+const gatedDimGroups = [];
+
+// HUD toggle — controls the booth-shell dim overlay (footprint, height stack,
+// nameplate, carpet/light/outlet pins) and any registered sub-groups.
 const dimBtn = document.getElementById('dimToggle');
 dimBtn.onclick = () => {
   dimGroup.visible = !dimGroup.visible;
-  for (const p of targetPins) p.visible = dimGroup.visible;
+  for (const g of gatedDimGroups) g.visible = dimGroup.visible;
   dimBtn.classList.toggle('on', dimGroup.visible);
 };
 
