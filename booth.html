@@ -847,6 +847,14 @@ const draggables = [];                       // items that can be slid along the
   mq.rotation.y = -Math.PI * 0.85;
   mqSystem.add(mq);
 
+  // All mannequin dimension overlays (ruler, ticks, labels, footnote) live in a
+  // sub-group so the Dimensions toggle can hide them while keeping the mannequin
+  // body visible. Hiding the mannequin via the checkbox still hides this group
+  // automatically (Three.js visibility is AND-ed across ancestors).
+  const mqDims = new THREE.Group();
+  mqDims.visible = false;          // start hidden — Dimensions toggle is off by default
+  mqSystem.add(mqDims);
+
   // Height ruler beside the mannequin, with reference ticks for Japanese male
   // and female averages. The mannequin (1,720 mm) is just above JP ♂ avg.
   // Source: e-Stat 2023, 19–29 yo cohort, rounded to 5 mm.
@@ -858,41 +866,38 @@ const draggables = [];                       // items that can be slid along the
   const orange = new THREE.LineBasicMaterial({ color: 0xf0a040, transparent: true, opacity: 0.9 });
   const orangeLight = new THREE.LineBasicMaterial({ color: 0xf0a040, transparent: true, opacity: 0.5 });
 
-  // Main vertical ruler from floor to top of head (1,720 mm)
-  mqSystem.add(lineSeg([0.30, 0,    0], [0.30, 1.72, 0], orange));
-  // Floor + head ticks
-  mqSystem.add(lineSeg([0.26, 0,    0], [0.34, 0,    0], orange));
-  mqSystem.add(lineSeg([0.26, 1.72, 0], [0.34, 1.72, 0], orange));
-  // Demographic reference ticks (lighter, shorter)
+  mqDims.add(lineSeg([0.30, 0,    0], [0.30, 1.72, 0], orange));
+  mqDims.add(lineSeg([0.26, 0,    0], [0.34, 0,    0], orange));
+  mqDims.add(lineSeg([0.26, 1.72, 0], [0.34, 1.72, 0], orange));
   for (const { y } of HEIGHTS) {
-    mqSystem.add(lineSeg([0.27, y, 0], [0.33, y, 0], orangeLight));
+    mqDims.add(lineSeg([0.27, y, 0], [0.33, y, 0], orangeLight));
   }
 
-  // Top label — primary number prominent
   const top = document.createElement('div');
   top.className = 'mq-label';
   top.innerHTML = `<b>1,720 mm</b><br><span>mannequin top</span>`;
   const topTag = new CSS2DObject(top);
   topTag.position.set(0.50, 1.80, 0);
-  mqSystem.add(topTag);
+  mqDims.add(topTag);
 
-  // Reference ticks — small inline labels
   for (const { y, label } of HEIGHTS) {
     const el = document.createElement('div');
     el.className = 'mq-tick';
     el.textContent = label;
     const tag = new CSS2DObject(el);
     tag.position.set(0.40, y, 0);
-    mqSystem.add(tag);
+    mqDims.add(tag);
   }
 
-  // Footnote — source key
   const note = document.createElement('div');
   note.className = 'mq-note';
   note.innerHTML = `♀ female · ♂ male<br>Japan avg, 19–29 yo (e-Stat 2023)`;
   const noteTag = new CSS2DObject(note);
   noteTag.position.set(0.50, 0.10, 0);
-  mqSystem.add(noteTag);
+  mqDims.add(noteTag);
+
+  // Track the mannequin dim sub-group so the global Dimensions toggle controls it.
+  targetPins.push(mqDims);
 
   // Register draggables — items that slide along the floor. Snapshot each
   // home position + rotation so "Reset to defaults" can restore the layout.
