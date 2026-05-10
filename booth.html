@@ -58,6 +58,27 @@
   }
   .mq-label b { font-size: 13px; color: #b06010; }
   .mq-label span { font-size: 10px; color: #666; }
+  .mq-tick {
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
+    border: 1px solid #d8a866;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font: 10px/1.2 "Helvetica Neue", system-ui, sans-serif;
+    pointer-events: none;
+    white-space: nowrap;
+    transform: translateX(0);
+  }
+  .mq-note {
+    background: rgba(255,255,255,0.85);
+    color: #555;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font: 9px/1.3 "Helvetica Neue", system-ui, sans-serif;
+    pointer-events: none;
+    text-align: left;
+    white-space: nowrap;
+  }
   #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
     background: #1a1a1a; z-index: 100; font-size: 14px; }
 </style>
@@ -425,21 +446,68 @@ function roundTable() {
 }
 
 function stackChair() {
-  // Adult-sized stackable chair: seat 460×460, seat-height 450, total height ~860
+  // Stackable conference chair (event-hire style): white plastic shell with
+  // a visible carry-handle slot in the back, mounted on a chrome tubular frame.
+  // Sized for adults: seat 460×440, seat-height 450, overall height ~870.
   const g = new THREE.Group();
-  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.04, 0.46), matWhiteFurniture);
-  seat.position.y = 0.45; seat.castShadow = true; seat.receiveShadow = true;
+  const tilt = -7 * Math.PI / 180;     // back leans 7° backward (negative = top toward -z)
+
+  // Seat shell (thinner than before, with a chrome edge underneath)
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.022, 0.44), matWhiteFurniture);
+  seat.position.y = 0.452;
+  seat.castShadow = true; seat.receiveShadow = true;
   g.add(seat);
-  const back = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.42, 0.04), matWhiteFurniture);
-  back.position.set(0, 0.68, -0.21); back.castShadow = true;
-  g.add(back);
-  const legGeo = new THREE.CylinderGeometry(0.018, 0.018, 0.45, 12);
+  const seatEdge = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.010, 0.43), matChrome);
+  seatEdge.position.y = 0.435;
+  g.add(seatEdge);
+
+  // Back — split into lumbar + upper with a visible horizontal slot (the
+  // "carry handle" you grab when stacking). Both panels tilt 7° backward.
+  const lumbar = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.18, 0.022), matWhiteFurniture);
+  lumbar.position.set(0, 0.59, -0.205);
+  lumbar.rotation.x = tilt;
+  lumbar.castShadow = true;
+  g.add(lumbar);
+
+  const upper = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.15, 0.022), matWhiteFurniture);
+  upper.position.set(0, 0.78, -0.227);
+  upper.rotation.x = tilt;
+  upper.castShadow = true;
+  g.add(upper);
+
+  // Tubular legs — slightly tapered
+  const legGeo = new THREE.CylinderGeometry(0.013, 0.020, 0.45, 16);
   const off = 0.20;
   for (const [dx, dz] of [[-off,-off],[off,-off],[-off,off],[off,off]]) {
     const leg = new THREE.Mesh(legGeo, matChrome);
-    leg.position.set(dx, 0.225, dz); leg.castShadow = true;
+    leg.position.set(dx, 0.225, dz);
+    leg.castShadow = true;
     g.add(leg);
   }
+
+  // Side stretchers (front-to-back tubes visible from the side — a hallmark
+  // of stackable conference chairs that lets shells nest tightly)
+  for (const dx of [-off, off]) {
+    const stretcher = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.011, 0.011, 0.40, 12).rotateX(Math.PI / 2),
+      matChrome);
+    stretcher.position.set(dx, 0.10, 0);
+    stretcher.castShadow = true;
+    g.add(stretcher);
+  }
+
+  // Back-support posts — extend from the rear legs up behind the back panels,
+  // continuing the tubular frame visually
+  for (const dx of [-off, off]) {
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.013, 0.50, 14),
+      matChrome);
+    post.position.set(dx, 0.68, -0.20);
+    post.rotation.x = tilt;
+    post.castShadow = true;
+    g.add(post);
+  }
+
   return g;
 }
 
@@ -760,21 +828,63 @@ const draggables = [];                       // items that can be slid along the
   mq.rotation.y = -Math.PI * 0.85;
   mqSystem.add(mq);
 
-  const heightLabel = document.createElement('div');
-  heightLabel.className = 'mq-label';
-  heightLabel.innerHTML = `<b>1,720 mm</b><br><span>avg adult, for scale</span>`;
-  const heightTag = new CSS2DObject(heightLabel);
-  heightTag.position.set(0.36, 1.78, 0);
-  mqSystem.add(heightTag);
+  // Height ruler beside the mannequin, with reference ticks at male/female averages
+  // for Japan and Korea. The mannequin is 1,720 mm (between JP♂ 1,715 and KR♂ 1,735).
+  // Sources: e-Stat 2023 (JP), KOSIS 2023 (KR), 19-29 yo cohort, rounded to 5 mm.
+  const HEIGHTS = [
+    { y: 1.585, label: 'JP ♀ 1,585', side: 'right' },
+    { y: 1.610, label: 'KR ♀ 1,610', side: 'right' },
+    { y: 1.715, label: 'JP ♂ 1,715', side: 'right' },
+    { y: 1.735, label: 'KR ♂ 1,735', side: 'right' },
+  ];
 
   const orange = new THREE.LineBasicMaterial({ color: 0xf0a040, transparent: true, opacity: 0.9 });
-  mqSystem.add(lineSeg([0.30, 0,    0], [0.30, 1.72, 0], orange));
-  mqSystem.add(lineSeg([0.26, 1.72, 0], [0.34, 1.72, 0], orange));
-  mqSystem.add(lineSeg([0.26, 0,    0], [0.34, 0,    0], orange));
+  const orangeLight = new THREE.LineBasicMaterial({ color: 0xf0a040, transparent: true, opacity: 0.5 });
 
-  // Register draggables — items that slide along the floor.
+  // Main vertical ruler from floor to top of head (1,720 mm)
+  mqSystem.add(lineSeg([0.30, 0,    0], [0.30, 1.72, 0], orange));
+  // Floor + head ticks
+  mqSystem.add(lineSeg([0.26, 0,    0], [0.34, 0,    0], orange));
+  mqSystem.add(lineSeg([0.26, 1.72, 0], [0.34, 1.72, 0], orange));
+  // Demographic reference ticks (lighter, shorter)
+  for (const { y } of HEIGHTS) {
+    mqSystem.add(lineSeg([0.27, y, 0], [0.33, y, 0], orangeLight));
+  }
+
+  // Top label — primary number prominent
+  const top = document.createElement('div');
+  top.className = 'mq-label';
+  top.innerHTML = `<b>1,720 mm</b><br><span>mannequin top</span>`;
+  const topTag = new CSS2DObject(top);
+  topTag.position.set(0.50, 1.80, 0);
+  mqSystem.add(topTag);
+
+  // Reference ticks — small inline labels
+  for (const { y, label } of HEIGHTS) {
+    const el = document.createElement('div');
+    el.className = 'mq-tick';
+    el.textContent = label;
+    const tag = new CSS2DObject(el);
+    tag.position.set(0.40, y, 0);
+    mqSystem.add(tag);
+  }
+
+  // Footnote — region key
+  const note = document.createElement('div');
+  note.className = 'mq-note';
+  note.innerHTML = `♀ female · ♂ male<br>2023 national avg, 19–29 yo`;
+  const noteTag = new CSS2DObject(note);
+  noteTag.position.set(0.50, 0.10, 0);
+  mqSystem.add(noteTag);
+
+  // Register draggables — items that slide along the floor. Snapshot each
+  // home position + rotation so "Reset to defaults" can restore the layout.
   for (const obj of [table, ...chairs, rc, stool, bin, mqSystem]) {
     obj.userData.draggable = true;
+    obj.userData.home = {
+      position: obj.position.clone(),
+      rotationY: obj.rotation.y,
+    };
     draggables.push(obj);
   }
 
@@ -908,6 +1018,15 @@ document.getElementById('rightFile').addEventListener('change', (e) => {
   setWallTextureFromFile(walls.right, e.target.files[0]);
 });
 document.getElementById('resetWalls').addEventListener('click', async () => {
+  // Restore the original layout: every draggable goes back to its home pose
+  for (const obj of draggables) {
+    const home = obj.userData?.home;
+    if (!home) continue;
+    obj.position.copy(home.position);
+    obj.rotation.y = home.rotationY;
+  }
+
+  // Restore wall textures
   document.getElementById('frontFile').value = '';
   document.getElementById('rightFile').value = '';
   for (const [mesh, url] of [
@@ -962,15 +1081,20 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
   e.preventDefault();
 });
 
+// Allow items to slide outside the booth into the aisle, up to 1.5× the booth
+// extents centered on the booth (0.75 m margin on every side).
+const DRAG_PAD_X = (W * 1.5 - W) / 2;     // 0.75 m
+const DRAG_PAD_Z = (D * 1.5 - D) / 2;
+const DRAG_X_MIN = -DRAG_PAD_X, DRAG_X_MAX = W + DRAG_PAD_X;
+const DRAG_Z_MIN = -DRAG_PAD_Z, DRAG_Z_MAX = D + DRAG_PAD_Z;
+
 renderer.domElement.addEventListener('pointermove', (e) => {
   pointerToNDC(e);
   if (dragTarget) {
     dragRaycaster.setFromCamera(dragPointer, camera);
     if (dragRaycaster.ray.intersectPlane(dragPlane, dragPoint)) {
-      // Clamp inside the booth footprint with a small margin so things don't ghost into walls.
-      const margin = 0.10;
-      dragTarget.position.x = Math.max(margin, Math.min(W - margin, dragPoint.x + dragOffset.x));
-      dragTarget.position.z = Math.max(margin, Math.min(D - margin, dragPoint.z + dragOffset.z));
+      dragTarget.position.x = Math.max(DRAG_X_MIN, Math.min(DRAG_X_MAX, dragPoint.x + dragOffset.x));
+      dragTarget.position.z = Math.max(DRAG_Z_MIN, Math.min(DRAG_Z_MAX, dragPoint.z + dragOffset.z));
     }
   } else {
     // Hover cursor hint — only when not currently orbiting
