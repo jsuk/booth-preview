@@ -44,6 +44,20 @@
     box-shadow: 0 1px 3px rgba(0,0,0,.4);
   }
   .dim-label.compact { font-size: 10px; padding: 0 4px; background: #fff; }
+  .mq-label {
+    background: rgba(255, 255, 255, 0.95);
+    color: #1a1a1a;
+    border: 1px solid #f0a040;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font: 11px/1.3 "Helvetica Neue", system-ui, sans-serif;
+    text-align: center;
+    pointer-events: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,.35);
+    white-space: nowrap;
+  }
+  .mq-label b { font-size: 13px; color: #b06010; }
+  .mq-label span { font-size: 10px; color: #666; }
   #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
     background: #1a1a1a; z-index: 100; font-size: 14px; }
 </style>
@@ -55,7 +69,7 @@
   3,000 × 3,000 × H3,300 mm (wall 2,700 + parapet 600)<br>
   Sun International Shell · corner booth · 2 walls + 2 parapets<br>
   Nameplate W2950 × H520 · gray carpet · ∅750 round table<br>
-  <small>Drag to orbit · scroll to zoom · right-drag to pan</small>
+  <small>Click + drag furniture/mannequin to slide · drag empty space to orbit · scroll to zoom</small>
   <div id="views">
     <button data-v="corner">Corner</button>
     <button data-v="aisle">Aisle</button>
@@ -469,92 +483,140 @@ function barStool() {
   return g;
 }
 
-// Stylized mannequin (~1.72 m). Provides a scale reference inside the 3D booth.
-function mannequin({ pose = 'standing' } = {}) {
+// Friendly mannequin (~1.72 m) — provides a human-scale reference inside the booth.
+// Warm-cream body (cartoon-mannequin look), painted smiling face, light-blue scrubs torso
+// to fit the medical-exhibition context.
+function mannequin() {
   const g = new THREE.Group();
   const matSkin = new THREE.MeshStandardMaterial({
-    color: 0xb8b8bc, roughness: 0.55, metalness: 0.08,
+    color: 0xf0d4b6, roughness: 0.6, metalness: 0.0,
   });
-  const matJoint = new THREE.MeshStandardMaterial({
-    color: 0x9a9a9e, roughness: 0.7,
+  const matScrubs = new THREE.MeshStandardMaterial({
+    color: 0x6fb3c8, roughness: 0.65,
+  });
+  const matPants = new THREE.MeshStandardMaterial({
+    color: 0x4f6a8a, roughness: 0.7,
+  });
+  const matShoe = new THREE.MeshStandardMaterial({
+    color: 0x2a2a2a, roughness: 0.6,
   });
 
-  // Head (sphere, ∅180 — slightly larger to read clearly at distance)
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.105, 24, 18), matSkin);
-  head.position.y = 1.61; head.castShadow = true;
+  // Head — slightly larger for a friendlier silhouette
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.115, 28, 22), matSkin);
+  head.position.y = 1.605; head.castShadow = true;
   g.add(head);
 
+  // Painted face — a small canvas-textured plane glued just in front of the head
+  const faceCanvas = makeFaceCanvas();
+  const faceTex = new THREE.CanvasTexture(faceCanvas);
+  faceTex.colorSpace = THREE.SRGBColorSpace;
+  faceTex.anisotropy = 8;
+  const face = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.18, 0.18),
+    new THREE.MeshBasicMaterial({ map: faceTex, transparent: true })
+  );
+  face.position.set(0, 1.60, 0.108);
+  g.add(face);
+
   // Neck
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.07, 16), matJoint);
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.07, 16), matSkin);
   neck.position.y = 1.47; neck.castShadow = true;
   g.add(neck);
 
-  // Torso (chest tapering to waist) — use a tapered cylinder for a friendly mannequin look
+  // Torso (light-blue scrubs)
   const torso = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.13, 0.16, 0.50, 24), matSkin);
+    new THREE.CylinderGeometry(0.135, 0.165, 0.50, 24), matScrubs);
   torso.position.y = 1.18; torso.castShadow = true;
   g.add(torso);
   // Shoulders
   const shoulders = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.18, 0.18, 0.06, 24).rotateZ(Math.PI / 2), matSkin);
+    new THREE.CylinderGeometry(0.18, 0.18, 0.06, 24).rotateZ(Math.PI / 2), matScrubs);
   shoulders.position.y = 1.40; shoulders.castShadow = true;
   g.add(shoulders);
-  // Hips
+  // Hips (transition into pants)
   const hips = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.16, 0.14, 0.10, 20), matSkin);
+    new THREE.CylinderGeometry(0.165, 0.145, 0.10, 20), matPants);
   hips.position.y = 0.88; hips.castShadow = true;
   g.add(hips);
 
-  // Arms — one slight bend for a more natural pose
+  // Arms — short sleeves end above the elbow; lower arm is skin
   function arm(side) {
     const a = new THREE.Group();
+    const sleeve = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.045, 0.16, 16), matScrubs);
+    sleeve.position.y = -0.08; sleeve.castShadow = true;
+    a.add(sleeve);
     const upper = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.045, 0.04, 0.30, 16), matSkin);
-    upper.position.y = -0.15; upper.castShadow = true;
+      new THREE.CylinderGeometry(0.04, 0.038, 0.16, 16), matSkin);
+    upper.position.y = -0.24; upper.castShadow = true;
     a.add(upper);
-    const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 10), matJoint);
-    elbow.position.y = -0.30; a.add(elbow);
+    const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.04, 14, 10), matSkin);
+    elbow.position.y = -0.32; a.add(elbow);
     const lower = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.04, 0.035, 0.28, 16), matSkin);
-    lower.position.y = -0.44;
-    lower.castShadow = true;
+      new THREE.CylinderGeometry(0.038, 0.034, 0.26, 16), matSkin);
+    lower.position.y = -0.45; lower.castShadow = true;
     a.add(lower);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 10), matSkin);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.052, 14, 12), matSkin);
     hand.position.y = -0.60; a.add(hand);
     a.position.set(side * 0.20, 1.40, 0);
-    a.rotation.z = side * 0.06;          // arms hang slightly outward
+    a.rotation.z = side * 0.06;
     return a;
   }
   g.add(arm(-1)); g.add(arm(1));
 
-  // Legs
+  // Legs (pants)
   function leg(side) {
     const l = new THREE.Group();
     const thigh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.07, 0.06, 0.42, 16), matSkin);
+      new THREE.CylinderGeometry(0.075, 0.065, 0.42, 16), matPants);
     thigh.position.y = -0.21; thigh.castShadow = true;
     l.add(thigh);
-    const knee = new THREE.Mesh(new THREE.SphereGeometry(0.07, 14, 10), matJoint);
+    const knee = new THREE.Mesh(new THREE.SphereGeometry(0.07, 14, 10), matPants);
     knee.position.y = -0.42; l.add(knee);
     const calf = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06, 0.05, 0.40, 16), matSkin);
+      new THREE.CylinderGeometry(0.065, 0.055, 0.40, 16), matPants);
     calf.position.y = -0.62; calf.castShadow = true;
     l.add(calf);
     const foot = new THREE.Mesh(
-      new THREE.BoxGeometry(0.10, 0.045, 0.22), matJoint);
-    foot.position.set(0, -0.825, 0.04); foot.castShadow = true;
+      new THREE.BoxGeometry(0.10, 0.045, 0.24), matShoe);
+    foot.position.set(0, -0.825, 0.045); foot.castShadow = true;
     l.add(foot);
     l.position.set(side * 0.085, 0.84, 0);
     return l;
   }
   g.add(leg(-1)); g.add(leg(1));
 
-  if (pose === 'leaning') {
-    // Slight forward lean — looks like the figure is examining the wall design
-    g.rotation.x = -0.06;
-  }
-
   return g;
+}
+
+function makeFaceCanvas() {
+  // Friendly face on a 256×256 transparent canvas, head front view.
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+  const ctx = c.getContext('2d');
+  // (transparent background)
+
+  // Eyes
+  ctx.fillStyle = '#1c1c1c';
+  ctx.beginPath(); ctx.arc(94,  118, 11, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(162, 118, 11, 0, Math.PI * 2); ctx.fill();
+  // Eye highlights
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(98,  114, 3.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(166, 114, 3.5, 0, Math.PI * 2); ctx.fill();
+
+  // Cheeks (soft pink)
+  ctx.fillStyle = 'rgba(238, 132, 122, 0.55)';
+  ctx.beginPath(); ctx.arc(74,  158, 14, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(182, 158, 14, 0, Math.PI * 2); ctx.fill();
+
+  // Smile
+  ctx.strokeStyle = '#1c1c1c';
+  ctx.lineWidth = 6;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(128, 156, 30, 0.15 * Math.PI, 0.85 * Math.PI, false);
+  ctx.stroke();
+  return c;
 }
 
 function wasteBin() {
@@ -595,6 +657,7 @@ function makeTextCanvas(text, w, h, color, bg) {
 
 // ---- Build & place ----
 const walls = { back: null, right: null };  // refs to print meshes — used by upload UI
+const draggables = [];                       // items that can be slid along the floor
 (async () => {
   const back = await buildBackWall();
   const right = await buildRightWall();
@@ -641,6 +704,7 @@ const walls = { back: null, right: null };  // refs to print meshes — used by 
   // 3 stackable chairs around the table — facing INWARD toward the table center.
   // Chair model's forward direction is +z (back panel sits at -z), so we rotate so local +z
   // points from the chair position back to (tableX, tableZ).
+  const chairs = [];
   const R = 0.78;
   const chairAngles = [Math.PI * 1.05, Math.PI * 1.45, Math.PI * 1.85];
   for (const a of chairAngles) {
@@ -650,6 +714,7 @@ const walls = { back: null, right: null };  // refs to print meshes — used by 
     c.position.set(cx, 0, cz);
     c.rotation.y = Math.atan2(tableX - cx, tableZ - cz);  // face the table
     scene.add(c);
+    chairs.push(c);
   }
 
   // Reception counter — front-right area, oriented along x (long edge facing the front aisle)
@@ -674,18 +739,36 @@ const walls = { back: null, right: null };  // refs to print meshes — used by 
   po.position.set(W - 0.45, 0.30, 0.025);
   scene.add(po);
 
-  // Mannequins for human-scale reference.
-  // Visitor — standing in front of the round table area, facing the back wall (looking at the print)
-  const visitor = mannequin({ pose: 'standing' });
-  visitor.position.set(W * 0.55, 0, D * 0.55);
-  visitor.rotation.y = Math.PI;       // face -z (back wall)
-  scene.add(visitor);
+  // Single mannequin + height callout, packaged in one group so dragging moves
+  // the figure and its label together. Stands in the open floor between the
+  // table area and the counter, angled toward the open corner.
+  const mqSystem = new THREE.Group();
+  const mqX = W * 0.62, mqZ = D * 0.45;
+  mqSystem.position.set(mqX, 0, mqZ);
+  mqSystem.userData.draggable = true;
+  scene.add(mqSystem);
 
-  // Staff — behind the reception counter, facing the front aisle to greet visitors
-  const staff = mannequin({ pose: 'standing' });
-  staff.position.set(rcX - 0.05, 0, rcZ + 0.40);
-  staff.rotation.y = 0;               // face +z (front aisle)
-  scene.add(staff);
+  const mq = mannequin();
+  mq.rotation.y = -Math.PI * 0.85;
+  mqSystem.add(mq);
+
+  const heightLabel = document.createElement('div');
+  heightLabel.className = 'mq-label';
+  heightLabel.innerHTML = `<b>1,720 mm</b><br><span>avg adult, for scale</span>`;
+  const heightTag = new CSS2DObject(heightLabel);
+  heightTag.position.set(0.36, 1.78, 0);
+  mqSystem.add(heightTag);
+
+  const orange = new THREE.LineBasicMaterial({ color: 0xf0a040, transparent: true, opacity: 0.9 });
+  mqSystem.add(lineSeg([0.30, 0,    0], [0.30, 1.72, 0], orange));
+  mqSystem.add(lineSeg([0.26, 1.72, 0], [0.34, 1.72, 0], orange));
+  mqSystem.add(lineSeg([0.26, 0,    0], [0.34, 0,    0], orange));
+
+  // Register draggables — items that slide along the floor.
+  for (const obj of [table, ...chairs, rc, stool, bin, mqSystem]) {
+    obj.userData.draggable = true;
+    draggables.push(obj);
+  }
 
   document.getElementById('loading').style.display = 'none';
 })();
@@ -831,6 +914,71 @@ document.getElementById('resetWalls').addEventListener('click', async () => {
     mesh.material.needsUpdate = true;
   }
 });
+
+// ---- Drag furniture & mannequin along the floor ----
+const dragRaycaster = new THREE.Raycaster();
+const dragPointer = new THREE.Vector2();
+const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);  // y = 0
+const dragPoint = new THREE.Vector3();
+const dragOffset = new THREE.Vector3();
+let dragTarget = null;
+
+function pointerToNDC(e) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  dragPointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  dragPointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+}
+
+function findDraggableAncestor(obj) {
+  while (obj && !obj.userData?.draggable) obj = obj.parent;
+  return obj || null;
+}
+
+function pickDraggable() {
+  dragRaycaster.setFromCamera(dragPointer, camera);
+  const hits = dragRaycaster.intersectObjects(draggables, true);
+  if (!hits.length) return null;
+  return findDraggableAncestor(hits[0].object);
+}
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;        // only left click — leave middle/right for orbit/pan
+  pointerToNDC(e);
+  const target = pickDraggable();
+  if (!target) return;
+  dragTarget = target;
+  dragRaycaster.ray.intersectPlane(dragPlane, dragPoint);
+  dragOffset.set(target.position.x - dragPoint.x, 0, target.position.z - dragPoint.z);
+  controls.enabled = false;
+  renderer.domElement.style.cursor = 'grabbing';
+  e.preventDefault();
+});
+
+renderer.domElement.addEventListener('pointermove', (e) => {
+  pointerToNDC(e);
+  if (dragTarget) {
+    dragRaycaster.setFromCamera(dragPointer, camera);
+    if (dragRaycaster.ray.intersectPlane(dragPlane, dragPoint)) {
+      // Clamp inside the booth footprint with a small margin so things don't ghost into walls.
+      const margin = 0.10;
+      dragTarget.position.x = Math.max(margin, Math.min(W - margin, dragPoint.x + dragOffset.x));
+      dragTarget.position.z = Math.max(margin, Math.min(D - margin, dragPoint.z + dragOffset.z));
+    }
+  } else {
+    // Hover cursor hint — only when not currently orbiting
+    renderer.domElement.style.cursor = pickDraggable() ? 'grab' : '';
+  }
+});
+
+function endDrag() {
+  if (!dragTarget) return;
+  dragTarget = null;
+  controls.enabled = true;
+  renderer.domElement.style.cursor = '';
+}
+renderer.domElement.addEventListener('pointerup', endDrag);
+renderer.domElement.addEventListener('pointerleave', endDrag);
+renderer.domElement.addEventListener('pointercancel', endDrag);
 
 // ---- Resize ----
 window.addEventListener('resize', () => {
