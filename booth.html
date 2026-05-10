@@ -17,6 +17,20 @@
     padding: 4px 10px; margin-right: 4px; border-radius: 4px; cursor: pointer; font-size: 12px; }
   #views button:hover { background: #3a3a3a; }
   #views button.on { background: #f0a040; color: #1a1a1a; border-color: #f0a040; }
+  #uploads { margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; }
+  .upRow { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 12px; }
+  .upRow label { flex: 0 0 110px; color: #cfd6df; }
+  .upRow input[type=file] { flex: 1; font-size: 11px; color: #ccc; max-width: 180px; }
+  .upRow input[type=file]::file-selector-button {
+    background: #2a2a2a; color: #eee; border: 1px solid #444;
+    padding: 2px 8px; border-radius: 3px; font-size: 11px; cursor: pointer;
+    margin-right: 6px;
+  }
+  .upRow input[type=file]::file-selector-button:hover { background: #3a3a3a; }
+  #resetWalls.ghost { background: transparent; color: #cfd6df; border: 1px solid #444;
+    padding: 3px 8px; margin-top: 4px; font-size: 11px; border-radius: 3px;
+    cursor: pointer; }
+  #resetWalls.ghost:hover { background: #2a2a2a; }
   .dim-label {
     background: #fff8d8;
     color: #1a1a1a;
@@ -49,6 +63,17 @@
     <button data-v="inside">Inside</button>
     <button data-v="top">Top</button>
     <button id="dimToggle">Dimensions</button>
+  </div>
+  <div id="uploads">
+    <div class="upRow">
+      <label for="frontFile">Front wall image</label>
+      <input id="frontFile" type="file" accept="image/*">
+    </div>
+    <div class="upRow">
+      <label for="rightFile">Right wall image</label>
+      <input id="rightFile" type="file" accept="image/*">
+    </div>
+    <button id="resetWalls" class="ghost">Reset to defaults</button>
   </div>
 </div>
 <div id="app"></div>
@@ -207,6 +232,7 @@ scene.add(aisle);
 const WALL_T = 0.04; // panel thickness
 
 // Wall: print covers the inside face, full height (nameplates live on parapets, not the wall top).
+// Returns { group, print } so callers can swap the print's texture on the fly.
 async function buildBackWall() {
   const group = new THREE.Group();
   const base = new THREE.Mesh(new THREE.BoxGeometry(W, H, WALL_T), matWhite);
@@ -215,15 +241,13 @@ async function buildBackWall() {
   group.add(base);
 
   const tex = await loadTex('wall%20design%20front.png');
-  if (tex) {
-    const print = new THREE.Mesh(
-      new THREE.PlaneGeometry(W, H),
-      new THREE.MeshBasicMaterial({ map: tex })
-    );
-    print.position.set(W/2, H/2, 0.005);
-    group.add(print);
-  }
-  return group;
+  const print = new THREE.Mesh(
+    new THREE.PlaneGeometry(W, H),
+    new THREE.MeshBasicMaterial({ map: tex || null, color: tex ? 0xffffff : 0xeeeeee })
+  );
+  print.position.set(W/2, H/2, 0.005);
+  group.add(print);
+  return { group, print };
 }
 
 async function buildRightWall() {
@@ -234,16 +258,14 @@ async function buildRightWall() {
   group.add(base);
 
   const tex = await loadTex('wall%20design%20right.png');
-  if (tex) {
-    const print = new THREE.Mesh(
-      new THREE.PlaneGeometry(D, H),
-      new THREE.MeshBasicMaterial({ map: tex })
-    );
-    print.rotation.y = -Math.PI / 2;
-    print.position.set(W - 0.005, H/2, D/2);
-    group.add(print);
-  }
-  return group;
+  const print = new THREE.Mesh(
+    new THREE.PlaneGeometry(D, H),
+    new THREE.MeshBasicMaterial({ map: tex || null, color: tex ? 0xffffff : 0xeeeeee })
+  );
+  print.rotation.y = -Math.PI / 2;
+  print.position.set(W - 0.005, H/2, D/2);
+  group.add(print);
+  return { group, print };
 }
 
 // Parapet beam with centered nameplate (whiteboard, black gothic lettering, both faces).
@@ -389,16 +411,16 @@ function roundTable() {
 }
 
 function stackChair() {
+  // Adult-sized stackable chair: seat 460×460, seat-height 450, total height ~860
   const g = new THREE.Group();
-  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.04, 0.42), matWhiteFurniture);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.04, 0.46), matWhiteFurniture);
   seat.position.y = 0.45; seat.castShadow = true; seat.receiveShadow = true;
   g.add(seat);
-  const back = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.45, 0.04), matWhiteFurniture);
-  back.position.set(0, 0.69, -0.19); back.castShadow = true;
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.42, 0.04), matWhiteFurniture);
+  back.position.set(0, 0.68, -0.21); back.castShadow = true;
   g.add(back);
-  // 4 legs
-  const legGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.45, 12);
-  const off = 0.18;
+  const legGeo = new THREE.CylinderGeometry(0.018, 0.018, 0.45, 12);
+  const off = 0.20;
   for (const [dx, dz] of [[-off,-off],[off,-off],[-off,off],[off,off]]) {
     const leg = new THREE.Mesh(legGeo, matChrome);
     leg.position.set(dx, 0.225, dz); leg.castShadow = true;
@@ -430,20 +452,108 @@ function counter() {
 }
 
 function barStool() {
+  // Counter chair: seat-height 660, base ∅440. Sized for a 750 mm counter.
   const g = new THREE.Group();
-  const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.04, 32), matBlack);
+  const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.05, 32), matBlack);
   seat.position.y = 0.66; seat.castShadow = true;
   g.add(seat);
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.66, 16), matChrome);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.64, 16), matChrome);
   stem.position.y = 0.33; stem.castShadow = true;
   g.add(stem);
   const base = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.025, 32), matChrome);
   base.position.y = 0.012;
   g.add(base);
-  // foot ring
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.012, 8, 32), matChrome);
-  ring.rotation.x = Math.PI/2; ring.position.y = 0.20;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.014, 10, 36), matChrome);
+  ring.rotation.x = Math.PI/2; ring.position.y = 0.22;
   g.add(ring);
+  return g;
+}
+
+// Stylized mannequin (~1.72 m). Provides a scale reference inside the 3D booth.
+function mannequin({ pose = 'standing' } = {}) {
+  const g = new THREE.Group();
+  const matSkin = new THREE.MeshStandardMaterial({
+    color: 0xb8b8bc, roughness: 0.55, metalness: 0.08,
+  });
+  const matJoint = new THREE.MeshStandardMaterial({
+    color: 0x9a9a9e, roughness: 0.7,
+  });
+
+  // Head (sphere, ∅180 — slightly larger to read clearly at distance)
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.105, 24, 18), matSkin);
+  head.position.y = 1.61; head.castShadow = true;
+  g.add(head);
+
+  // Neck
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.07, 16), matJoint);
+  neck.position.y = 1.47; neck.castShadow = true;
+  g.add(neck);
+
+  // Torso (chest tapering to waist) — use a tapered cylinder for a friendly mannequin look
+  const torso = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.13, 0.16, 0.50, 24), matSkin);
+  torso.position.y = 1.18; torso.castShadow = true;
+  g.add(torso);
+  // Shoulders
+  const shoulders = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.18, 0.18, 0.06, 24).rotateZ(Math.PI / 2), matSkin);
+  shoulders.position.y = 1.40; shoulders.castShadow = true;
+  g.add(shoulders);
+  // Hips
+  const hips = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.16, 0.14, 0.10, 20), matSkin);
+  hips.position.y = 0.88; hips.castShadow = true;
+  g.add(hips);
+
+  // Arms — one slight bend for a more natural pose
+  function arm(side) {
+    const a = new THREE.Group();
+    const upper = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.045, 0.04, 0.30, 16), matSkin);
+    upper.position.y = -0.15; upper.castShadow = true;
+    a.add(upper);
+    const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 10), matJoint);
+    elbow.position.y = -0.30; a.add(elbow);
+    const lower = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.035, 0.28, 16), matSkin);
+    lower.position.y = -0.44;
+    lower.castShadow = true;
+    a.add(lower);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 10), matSkin);
+    hand.position.y = -0.60; a.add(hand);
+    a.position.set(side * 0.20, 1.40, 0);
+    a.rotation.z = side * 0.06;          // arms hang slightly outward
+    return a;
+  }
+  g.add(arm(-1)); g.add(arm(1));
+
+  // Legs
+  function leg(side) {
+    const l = new THREE.Group();
+    const thigh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.07, 0.06, 0.42, 16), matSkin);
+    thigh.position.y = -0.21; thigh.castShadow = true;
+    l.add(thigh);
+    const knee = new THREE.Mesh(new THREE.SphereGeometry(0.07, 14, 10), matJoint);
+    knee.position.y = -0.42; l.add(knee);
+    const calf = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.05, 0.40, 16), matSkin);
+    calf.position.y = -0.62; calf.castShadow = true;
+    l.add(calf);
+    const foot = new THREE.Mesh(
+      new THREE.BoxGeometry(0.10, 0.045, 0.22), matJoint);
+    foot.position.set(0, -0.825, 0.04); foot.castShadow = true;
+    l.add(foot);
+    l.position.set(side * 0.085, 0.84, 0);
+    return l;
+  }
+  g.add(leg(-1)); g.add(leg(1));
+
+  if (pose === 'leaning') {
+    // Slight forward lean — looks like the figure is examining the wall design
+    g.rotation.x = -0.06;
+  }
+
   return g;
 }
 
@@ -484,10 +594,14 @@ function makeTextCanvas(text, w, h, color, bg) {
 }
 
 // ---- Build & place ----
+const walls = { back: null, right: null };  // refs to print meshes — used by upload UI
 (async () => {
   const back = await buildBackWall();
   const right = await buildRightWall();
-  scene.add(back, right);
+  scene.add(back.group, right.group);
+  // expose to the upload handler
+  walls.back = back.print;
+  walls.right = right.print;
 
   // Parapets across the two open sides of the corner booth (Sun International style).
   // Each is a 600 mm beam at the very top, carrying a W2950 × H520 nameplate.
@@ -559,6 +673,19 @@ function makeTextCanvas(text, w, h, color, bg) {
   const po = powerOutlet();
   po.position.set(W - 0.45, 0.30, 0.025);
   scene.add(po);
+
+  // Mannequins for human-scale reference.
+  // Visitor — standing in front of the round table area, facing the back wall (looking at the print)
+  const visitor = mannequin({ pose: 'standing' });
+  visitor.position.set(W * 0.55, 0, D * 0.55);
+  visitor.rotation.y = Math.PI;       // face -z (back wall)
+  scene.add(visitor);
+
+  // Staff — behind the reception counter, facing the front aisle to greet visitors
+  const staff = mannequin({ pose: 'standing' });
+  staff.position.set(rcX - 0.05, 0, rcZ + 0.40);
+  staff.rotation.y = 0;               // face +z (front aisle)
+  scene.add(staff);
 
   document.getElementById('loading').style.display = 'none';
 })();
@@ -659,6 +786,51 @@ dimBtn.onclick = () => {
   dimGroup.visible = !dimGroup.visible;
   dimBtn.classList.toggle('on', dimGroup.visible);
 };
+
+// ---- Wall image upload ----
+function setWallTextureFromFile(printMesh, file) {
+  if (!file || !printMesh) return;
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    const tex = new THREE.Texture(img);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 8;
+    tex.needsUpdate = true;
+    if (printMesh.material.map) printMesh.material.map.dispose();
+    printMesh.material.map = tex;
+    printMesh.material.color.set(0xffffff);
+    printMesh.material.needsUpdate = true;
+    URL.revokeObjectURL(url);
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    alert('Could not load that image.');
+  };
+  img.src = url;
+}
+
+document.getElementById('frontFile').addEventListener('change', (e) => {
+  setWallTextureFromFile(walls.back, e.target.files[0]);
+});
+document.getElementById('rightFile').addEventListener('change', (e) => {
+  setWallTextureFromFile(walls.right, e.target.files[0]);
+});
+document.getElementById('resetWalls').addEventListener('click', async () => {
+  document.getElementById('frontFile').value = '';
+  document.getElementById('rightFile').value = '';
+  for (const [mesh, url] of [
+    [walls.back, 'wall%20design%20front.png'],
+    [walls.right, 'wall%20design%20right.png'],
+  ]) {
+    if (!mesh) continue;
+    const tex = await loadTex(url);
+    if (mesh.material.map) mesh.material.map.dispose();
+    mesh.material.map = tex || null;
+    mesh.material.color.set(tex ? 0xffffff : 0xeeeeee);
+    mesh.material.needsUpdate = true;
+  }
+});
 
 // ---- Resize ----
 window.addEventListener('resize', () => {
