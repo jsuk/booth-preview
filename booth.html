@@ -17,6 +17,14 @@
     padding: 4px 10px; margin-right: 4px; border-radius: 4px; cursor: pointer; font-size: 12px; }
   #views button:hover { background: #3a3a3a; }
   #views button.on { background: #f0a040; color: #1a1a1a; border-color: #f0a040; }
+  #visibility { margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; }
+  #visibility .panel-title { color: #cfd6df; font-weight: 600; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  #visibility label { display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: #ddd; cursor: pointer;
+    padding: 1px 0; user-select: none; }
+  #visibility input[type=checkbox] { margin: 0; cursor: pointer; }
+  #visibility label:hover { color: #fff; }
   #uploads { margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; }
   .upRow { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 12px; }
   .upRow label { flex: 0 0 110px; color: #cfd6df; }
@@ -98,6 +106,15 @@
     <button data-v="inside">Inside</button>
     <button data-v="top">Top</button>
     <button id="dimToggle">Dimensions</button>
+  </div>
+  <div id="visibility">
+    <div class="panel-title">Show / hide</div>
+    <label><input type="checkbox" data-vis="table" checked>Round Table</label>
+    <label><input type="checkbox" data-vis="chairs" checked>Stackable Chairs (×3)</label>
+    <label><input type="checkbox" data-vis="counter" checked>Reception Counter</label>
+    <label><input type="checkbox" data-vis="stool" checked>Bar Stool</label>
+    <label><input type="checkbox" data-vis="bin" checked>Waste Bin</label>
+    <label><input type="checkbox" data-vis="mannequin" checked>Mannequin</label>
   </div>
   <div id="uploads">
     <div class="upRow">
@@ -886,6 +903,23 @@ const draggables = [];                       // items that can be slid along the
     draggables.push(obj);
   }
 
+  // Wire up the show/hide checkboxes
+  const visMap = {
+    table: [table],
+    chairs: chairs,
+    counter: [rc],
+    stool: [stool],
+    bin: [bin],
+    mannequin: [mqSystem],
+  };
+  document.querySelectorAll('#visibility input[type=checkbox]').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const items = visMap[cb.dataset.vis];
+      if (!items) return;
+      for (const obj of items) obj.visible = cb.checked;
+    });
+  });
+
   document.getElementById('loading').style.display = 'none';
 })();
 
@@ -1022,7 +1056,12 @@ document.getElementById('resetWalls').addEventListener('click', async () => {
     if (!home) continue;
     obj.position.copy(home.position);
     obj.rotation.y = home.rotationY;
+    obj.visible = true;
   }
+  // Re-check every visibility checkbox
+  document.querySelectorAll('#visibility input[type=checkbox]').forEach((cb) => {
+    cb.checked = true;
+  });
 
   // Restore wall textures
   document.getElementById('frontFile').value = '';
@@ -1061,7 +1100,9 @@ function findDraggableAncestor(obj) {
 
 function pickDraggable() {
   dragRaycaster.setFromCamera(dragPointer, camera);
-  const hits = dragRaycaster.intersectObjects(draggables, true);
+  // Skip hidden items so they can't be grabbed when toggled off.
+  const candidates = draggables.filter((d) => d.visible);
+  const hits = dragRaycaster.intersectObjects(candidates, true);
   if (!hits.length) return null;
   return findDraggableAncestor(hits[0].object);
 }
