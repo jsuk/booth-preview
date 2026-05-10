@@ -828,14 +828,12 @@ const draggables = [];                       // items that can be slid along the
   mq.rotation.y = -Math.PI * 0.85;
   mqSystem.add(mq);
 
-  // Height ruler beside the mannequin, with reference ticks at male/female averages
-  // for Japan and Korea. The mannequin is 1,720 mm (between JP♂ 1,715 and KR♂ 1,735).
-  // Sources: e-Stat 2023 (JP), KOSIS 2023 (KR), 19-29 yo cohort, rounded to 5 mm.
+  // Height ruler beside the mannequin, with reference ticks for Japanese male
+  // and female averages. The mannequin (1,720 mm) is just above JP ♂ avg.
+  // Source: e-Stat 2023, 19–29 yo cohort, rounded to 5 mm.
   const HEIGHTS = [
-    { y: 1.585, label: 'JP ♀ 1,585', side: 'right' },
-    { y: 1.610, label: 'KR ♀ 1,610', side: 'right' },
-    { y: 1.715, label: 'JP ♂ 1,715', side: 'right' },
-    { y: 1.735, label: 'KR ♂ 1,735', side: 'right' },
+    { y: 1.585, label: 'JP ♀ 1,585' },
+    { y: 1.715, label: 'JP ♂ 1,715' },
   ];
 
   const orange = new THREE.LineBasicMaterial({ color: 0xf0a040, transparent: true, opacity: 0.9 });
@@ -869,10 +867,10 @@ const draggables = [];                       // items that can be slid along the
     mqSystem.add(tag);
   }
 
-  // Footnote — region key
+  // Footnote — source key
   const note = document.createElement('div');
   note.className = 'mq-note';
-  note.innerHTML = `♀ female · ♂ male<br>2023 national avg, 19–29 yo`;
+  note.innerHTML = `♀ female · ♂ male<br>Japan avg, 19–29 yo (e-Stat 2023)`;
   const noteTag = new CSS2DObject(note);
   noteTag.position.set(0.50, 0.10, 0);
   mqSystem.add(noteTag);
