@@ -788,8 +788,10 @@ const draggables = [];                       // items that can be slid along the
   //   reception counter is parallel to the front edge so visitors meet it from the aisle;
   //   waste bin tucked into the back-right corner; outlet on the back wall.
 
-  // Round table (∅750) — back-left, away from the open front
-  const tableX = W * 0.30, tableZ = D * 0.32;
+  // Round table (∅750) — back-left, with enough clearance from the back wall so
+  // the chair sitting on the back side (z ≈ tableZ − R − chair-back depth) doesn't
+  // intersect the wall plane at z = 0.
+  const tableX = W * 0.32, tableZ = D * 0.42;
   const table = roundTable();
   table.position.set(tableX, 0, tableZ);
   scene.add(table);
@@ -903,6 +905,14 @@ const draggables = [];                       // items that can be slid along the
     draggables.push(obj);
   }
 
+  // Pin labels attached to their targets — hide automatically with the target,
+  // and toggle with the global Dimensions button.
+  attachPin(table,     'Round Table  ∅750',                [0, 0.85, 0]);
+  attachPin(rc,        'Reception Counter  W900×D450×H750', [0, 0.92, 0]);
+  attachPin(stool,     'Bar Stool  H660',                   [0, 0.82, 0]);
+  attachPin(bin,       'Waste Bin',                         [0, 0.55, 0]);
+  attachPin(chairs[0], 'Stackable Chair × 3',               [0, 0.95, 0]);
+
   // Wire up the show/hide checkboxes
   const visMap = {
     table: [table],
@@ -999,24 +1009,34 @@ addDim(
   [(W + COLUMN_T) / 2 + NAMEPLATE_W / 2, npFrontY + NAMEPLATE_H / 2, D + 0.06],
   '520 mm', 'x', 0.10, true);
 
-// Furniture callouts (small leader-style labels)
+// Fixed-scene callouts (carpet, wall-mounted fixtures) — stay in dimGroup.
 function pin(label, position) {
   dimGroup.add(dimLabel(label, position, true));
 }
-pin('Round Table  ∅750', [W * 0.30, 0.78, D * 0.32]);
-pin('Reception Counter  W900 × D450 × H750', [W * 0.62, 0.92, D - 0.55]);
-pin('Bar Stool  H660', [W * 0.62 - 0.20, 0.78, D - 0.55 + 0.55]);
-pin('Stackable Chair × 3', [W * 0.30 - 0.65, 0.55, D * 0.32 + 0.40]);
-pin('Waste Bin', [W - 0.22, 0.50, 0.22]);
 pin('Power Outlet (2 plugs)', [W - 0.45, 0.42, 0.025]);
 pin('Stick Light 30W', [(W + COLUMN_T) / 2, H + 0.05, D - 0.06]);
 pin('Arm Spotlight 10W × 3', [W * 0.50, H - 0.05, 0.20]);
 pin('Carpet (Gray)', [W * 0.62, 0.06, D * 0.10]);
 
+// Pins attached to draggable objects — they inherit the target's visibility
+// AND respect the global Dimensions toggle (set on each pin individually).
+const targetPins = [];
+function attachPin(target, label, localPos) {
+  const div = document.createElement('div');
+  div.className = 'dim-label compact';
+  div.textContent = label;
+  const obj = new CSS2DObject(div);
+  obj.position.set(...localPos);
+  obj.visible = false;          // start hidden — match dimGroup default
+  target.add(obj);
+  targetPins.push(obj);
+}
+
 // HUD toggle
 const dimBtn = document.getElementById('dimToggle');
 dimBtn.onclick = () => {
   dimGroup.visible = !dimGroup.visible;
+  for (const p of targetPins) p.visible = dimGroup.visible;
   dimBtn.classList.toggle('on', dimGroup.visible);
 };
 
