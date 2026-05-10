@@ -1189,8 +1189,25 @@ window.addEventListener('resize', () => {
 });
 
 // ---- Animate ----
+// CSS2DRenderer in three.js r160 doesn't propagate ancestor visibility — a
+// CSS2DObject still renders even if its parent is invisible. We work around
+// it by recomputing each CSS2DObject's .visible from its full ancestor chain
+// every frame. This lets us hide a furniture group (or mqDims) and have its
+// pin labels disappear correctly.
+function syncCSS2DVisibility(root) {
+  root.traverse((obj) => {
+    if (!obj.isCSS2DObject) return;
+    let v = true;
+    for (let p = obj.parent; p; p = p.parent) {
+      if (!p.visible) { v = false; break; }
+    }
+    obj.visible = v;
+  });
+}
+
 function tick() {
   controls.update();
+  syncCSS2DVisibility(scene);
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);
   requestAnimationFrame(tick);
